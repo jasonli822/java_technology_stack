@@ -60,10 +60,10 @@ public void testCountTime1() throws InterruptedException {
 
 ```java
 /**
-* 方法三： CountDownLatch   美: [lætʃ] 
+* 方法二： CountDownLatch   美: [lætʃ] 
 */
 @Test
-    public void testCountTime3() {
+    public void testCountTime2() {
         long startTime = System.currentTimeMillis();//主线程开始时间
         int threadCount = 5;//线程数
         CountDownLatch cdl = new CountDownLatch(threadCount);
@@ -110,12 +110,11 @@ public void testCountTime1() throws InterruptedException {
 
 ```java
 /**
-     * 方法四
+     * 方法三
      * join
-     * @author Andrew.Lin
      */
     @Test
-    public void testCountTime4() throws InterruptedException {
+    public void testCountTime3() throws InterruptedException {
         long startTime = System.currentTimeMillis();//主线程开始时间
         List<Thread> startList = new LinkedList();
         for (int i = 0; i < 5; i++) {
