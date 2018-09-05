@@ -4,6 +4,8 @@
 
 ##### 系统启动N个线程同时执行，怎么统计它们共同的执行时间？你们知道几种方案？
 
+#####  下面列举三种常用的方法：
+
 ```java
 class TaskRunnable implements Runnable {
     @Override
