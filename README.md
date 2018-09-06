@@ -1,6 +1,8 @@
 # Java 技术栈、Java知识点学习
 
+## JVM
 
+- [垃圾回收](https://github.com/jasonli822/java_technology_stack/blob/master/JVM/%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6.md)
 
 ##  Java 多线程
 
