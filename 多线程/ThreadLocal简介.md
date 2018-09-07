@@ -1,0 +1,88 @@
+## ThreadLocal简介
+
+<font size=2>摘自《架构探险-从0开始写Java Web框架》 p158</font>
+
+### 什么是ThreadLocal
+
+ThreadLocal直译为“线程本地”或“本地线程”，如果这么认为，那就错了！其实它就是一个容器，用于存放线程的局部变量，应该叫ThreadLocalVariable(线程局部变量)才对，很不理解为什么当初Sun工程师这样命名。
+
+早在JDK1.2的时代，java.lang.ThreadLocal就诞生了，它是为了解决多线程并发问题而设计的，只不过设计的有些难用而已，所以至今没有得倒广泛使用。
+
+一个序列号生成器的程序可能同时会有多个线程并发访问它，要保证每个线程得倒的序列号都是自增的，而不能相互干扰。
+
+先定义一个接口：
+
+```java
+public interface Sequence {
+    int getNumber();
+}
+```
+
+
+
+每次调用getNumber方法可获取一个序列号，下次再调用时，序列号会自增。
+
+再做一个线程类：
+
+```java
+public class ClientThread extends Thread {
+    private Sequence sequence;
+
+    public ClientThread(Sequence sequence) {
+        this.sequence = sequence;
+    }
+
+    @Override
+    public void run() {
+        for (int i = 0; i < 3; i++) {
+            System.out.println(
+                    Thread.currentThread().getName() + " =>" + sequence.getNumber());
+        }
+    }
+}
+```
+
+我们不用ThreadLocal，先做一个实现类：
+
+```java
+public class SequenceA implements Sequence {
+    private static int number = 0;
+    
+    @Override
+    public int getNumber() {
+        number = number + 1;
+        return number;
+    }
+
+    public static void main(String[] args) {
+        Sequence sequence = new SequenceA();
+        
+        ClientThread thread1 = new ClientThread(sequence);
+        ClientThread thread2 = new ClientThread(sequence);
+        ClientThread thread3 = new ClientThread(sequence);
+        
+        thread1.start();
+        thread2.start();
+        thread3.start();
+    }
+}
+```
+
+序列号初始值是0，在main方法中模拟了三个线程，运行后结果如下：
+
+```java
+Thread-0 =>1
+Thread-0 =>2
+Thread-0 =>3
+Thread-1 =>4
+Thread-2 =>5
+Thread-1 =>6
+Thread-2 =>7
+Thread-1 =>8
+Thread-2 =>9
+```
+
+由于线程启动顺序是随机的，所以并不是0、1、2这样的顺序，这个好理解。为什么当Thread-0输出了1、2、3后，而Thread-1、Thread-2却输出了4、5、6呢？不应该从0开始输出吗？
+
+仔细分析才发现，线程之间共享static变量无法保证对不同线程而言是安全的，也就是说，此时无法保证“线程安全”。
+
