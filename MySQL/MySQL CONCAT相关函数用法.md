@@ -1,8 +1,10 @@
 ## MySQL CONCAT相关函数用法
 
-<font size=2>参考：https://blog.csdn.net/aya19880214/article/details/41280893</font>
+<font size=1>参考：https://blog.csdn.net/aya19880214/article/details/41280893</font>
 
+<pre>
 ### MySQL中CONCAT函数
+
 
 使用方法：
 
@@ -152,4 +154,5 @@ mysql> select id,group_concat(name order by name desc) from aa group by id;
 |3 | 500,200|
 +------+---------------------------------------+
 3 rows in set (0.00 sec)
+</pre>
 
