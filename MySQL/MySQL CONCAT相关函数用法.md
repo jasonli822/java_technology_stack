@@ -3,7 +3,7 @@
 <font size=1>参考：https://blog.csdn.net/aya19880214/article/details/41280893</font>
 
 <pre>
-### MySQL中CONCAT函数
+<b>MySQL中CONCAT函数</b>
 
 
 使用方法：
@@ -50,7 +50,7 @@ mysql> select concat('11','22',null);
 
 
 
-### MySQL中CONCAT_WS函数
+<b>MySQL中CONCAT_WS函数</b>
 
 使用方法：
 
@@ -82,7 +82,7 @@ mysql> select concat_ws(',','11','22',NULL);
 
 
 
-### MySQL中的GROUP_CONCAT函数
+<b>MySQL中的GROUP_CONCAT函数</b>
 
 完整的语法如下：
 
