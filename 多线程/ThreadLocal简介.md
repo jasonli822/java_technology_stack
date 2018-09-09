@@ -86,3 +86,53 @@ Thread-2 =>9
 
 仔细分析才发现，线程之间共享static变量无法保证对不同线程而言是安全的，也就是说，此时无法保证“线程安全”。
 
+那么如何才能做到“线程安全”呢？对应于这个案例，就是说不同的线程可拥有自己的static变量，如何实现呢？下面看看另外一个示例：
+
+```java
+public class SequenceB implements Sequence {
+    private static ThreadLocal<Integer> numberContainer = new ThreadLocal<Integer>() {
+        @Override
+        protected Integer initialValue() {
+            return 0;
+        }
+    };
+
+    @Override
+    public int getNumber() {
+        numberContainer.set(numberContainer.get() + 1);
+        return numberContainer.get();
+    }
+
+    public static void main(String[] args) {
+        Sequence sequence = new SequenceB();
+
+        ClientThread thread1 = new ClientThread(sequence);
+        ClientThread thread2 = new ClientThread(sequence);
+        ClientThread thread3 = new ClientThread(sequence);
+
+        thread1.start();
+        thread2.start();
+        thread3.start();
+    }
+}
+```
+
+通过ThreadLocal封装了一个Integer类型的numberContainer静态成员变量，并且初始值是0。再看getNumber方法，首先从numberContainer中get出当前的值，加1，随后set到numberContainer中，最后在numberContainer中get出当前的值并返回。
+
+是不是很绕？但是很强大！我们不妨把ThreadLocal看作是一个容器，这样理解起来就简单了，所以，这里故意用Container这个单词作为后缀来命名ThreadLocal变量。
+
+运行结果如下：
+
+```java
+Thread-0 =>1
+Thread-0 =>2
+Thread-0 =>3
+Thread-2 =>1
+Thread-2 =>2
+Thread-2 =>3
+Thread-1 =>1
+Thread-1 =>2
+Thread-1 =>3
+```
+
+每个线程相互独立了，同样是static变量，对于不同的线程而言，它没有被共享，而是每个线程各一份，这样也就保证了线程安全。也就是说，ThreadLocal为每一个线程提供了一个独立的副本。
