@@ -136,3 +136,94 @@ Thread-1 =>3
 ```
 
 每个线程相互独立了，同样是static变量，对于不同的线程而言，它没有被共享，而是每个线程各一份，这样也就保证了线程安全。也就是说，ThreadLocal为每一个线程提供了一个独立的副本。
+
+搞清楚ThreadLocal的原理之后，有必要总结一下ThreadLocal的API，其实很简单。
+
+- public void set(T value): 将值放入线程局部变量中；
+- public T get(): 从线程局部变量中获取值；
+- public void remove()：从线程局部变量中移除值（有助于JVM垃圾回收）
+- protected T initialValue():返回线程局部变量中的初始值(默认为null)
+
+为什么initalValue方法是protected的呢？就是为了提醒程序员，这个方法是要程序员来实现的，要给这个局部变量设置一个初始值。
+
+
+
+#### 自己实现ThreadLocal
+
+熟悉了原理与这些API之后，其实想想ThreadLocal里面不就是封装了一个Map吗？自己都可以写一个ThreadLocal了：
+
+```java
+public class MyThreadLocal<T> {
+    private Map<Thread, T> container = Collections.synchronizedMap(new HashMap<>());
+
+    public void set(T value) {
+        container.put(Thread.currentThread(), value);
+    }
+
+    public T get() {
+        Thread thread = Thread.currentThread();
+        T value = container.get(thread);
+        if (value == null && !container.containsKey(thread)) {
+            value = initialValue();
+            container.put(thread, value);
+        }
+        return value;
+    }
+
+    public void remove() {
+        container.remove(Thread.currentThread());
+    }
+
+    protected T initialValue() {
+        return null;
+    }
+}
+```
+
+以上完全“山寨”了一个ThreadLocal，其中定义了一个同步Map，下面用MyThreadLocal再来实现一次：
+
+```java
+public class SequenceC implements Sequence {
+
+    private static MyThreadLocal<Integer> numberContainer = new MyThreadLocal<Integer>() {
+        @Override
+        protected Integer initialValue() {
+            return 0;
+        }
+    };
+
+    @Override
+    public int getNumber() {
+        numberContainer.set(numberContainer.get() + 1);
+        return numberContainer.get();
+    }
+
+    public static void main(String[] args) {
+        Sequence sequence = new SequenceC();
+
+        ClientThread thread1 = new ClientThread(sequence);
+        ClientThread thread2 = new ClientThread(sequence);
+        ClientThread thread3 = new ClientThread(sequence);
+
+        thread1.start();
+        thread2.start();
+        thread3.start();
+    }
+}
+```
+
+运行结果：
+
+```java
+Thread-0 =>1
+Thread-0 =>2
+Thread-0 =>3
+Thread-2 =>1
+Thread-2 =>2
+Thread-2 =>3
+Thread-1 =>1
+Thread-1 =>2
+Thread-1 =>3
+```
+
+以上代码其实就是将ThreadLocal替换成了MyThreadLocal，仅此而已，运行效果和之前一样，也是正确的。
