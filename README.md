@@ -12,4 +12,5 @@
 ### MySQL
 
 - [MySQL CONCAT相关函数用法](https://github.com/jasonli822/java_technology_stack/blob/master/MySQL/MySQL%20CONCAT%E7%9B%B8%E5%85%B3%E5%87%BD%E6%95%B0%E7%94%A8%E6%B3%95.md)
+- [SQL优化](https://github.com/jasonli822/java_technology_stack/blob/master/MySQL/SQL%E4%BC%98%E5%8C%96.md)
 

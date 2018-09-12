@@ -50,4 +50,15 @@
    select id from num/2 = 100 应改为： select id from t where num = 100*2
    ```
 
-9. 
+9. 应尽量避免在where子句中对字段进行函数操作，这将导致引擎放弃使用索引而进行全表扫描。如：
+
+   ```sql
+   select id from t where substring(name,1,3)='abc', name以abc开头的id,应改为i：
+   select id from t where name like 'abc%'
+   ```
+
+10. 不要在where子句中的“=”左边进行函数、算术运算或其他表达式运算，否则系统将可能无法正确的使用索引。
+
+11. 在使用索引字段作为条件时，如果该索引是复合索引，那么必须使用到该索引中的第一个字段作为条件时才能保证熊使用该索引，否则该索引将不会被使用，并且应尽可能的让字段顺序与索引顺序一致。
+
+12. 
