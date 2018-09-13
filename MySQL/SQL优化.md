@@ -21,7 +21,13 @@
 5. in 和 not in也要慎用，否则会导致全表扫描，如：
 
    ```sql
-   select id from t where num in(1,2,3) 对于连续的数值，能用between就不要用in了：select id from t where num between 1 and 3
+   select id from t where num in(1,2,3)
+   ```
+
+    对于连续的数值，能用between就不要用in了：
+
+   ```sql
+   select id from t where num between 1 and 3
    ```
 
 6. 下面的查询也将导致全表扫描：
@@ -47,13 +53,24 @@
 8. 应尽量避免在where子句中对字段进行表达式操作，这将导致引擎放弃使用索引而进行全表扫描。如：
 
    ```sql
-   select id from num/2 = 100 应改为： select id from t where num = 100*2
+   select id from num/2 = 100 
+   ```
+
+   应改为： 
+
+   ```sql
+   select id from t where num = 100*2
    ```
 
 9. 应尽量避免在where子句中对字段进行函数操作，这将导致引擎放弃使用索引而进行全表扫描。如：
 
    ```sql
-   select id from t where substring(name,1,3)='abc', name以abc开头的id,应改为i：
+   select id from t where substring(name,1,3)='abc'
+   ```
+
+   name以abc开头的id,应改为i：
+
+   ```sql
    select id from t where name like 'abc%'
    ```
 
@@ -61,4 +78,20 @@
 
 11. 在使用索引字段作为条件时，如果该索引是复合索引，那么必须使用到该索引中的第一个字段作为条件时才能保证熊使用该索引，否则该索引将不会被使用，并且应尽可能的让字段顺序与索引顺序一致。
 
-12. 
+12. 不要写一些没有意义的查询，如需要生成一个空表结构：select col1,col2 into #t from t whre 1 = 0
+
+13. 很多时候用exists代替in是一个好的选择：
+
+    ```sql
+    select num from a where num in(select num from b)
+    ```
+
+    用下面的语句替换：
+
+    ```sql
+    select num from a where exists(select 1 from b where num = a.num)
+    ```
+
+14. 并不是所有索引对查询都是有效，SQL是根据表中的数据来进行查询优化的，当索引列有大量数据重复时，SQL查询可能不会去利用索引，如一表中有字段sex，male、female几乎各占一半，那么即使在sex上建了索引页对查询效率起不了作用。
+
+15. 
