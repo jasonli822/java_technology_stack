@@ -28,11 +28,7 @@
 
 原材料已经准备好（把BeanDefinition看着原料），开始做菜吧，等等，你还需要一份菜谱，`BeanDefinitionRegistry`和`BeanFactory`就是这份菜谱，BeanDefinitionRegistry抽象出bean的注册逻辑，而BeanFactory则抽象出了bean的管理逻辑，而各个BeanFactory的实现类就具体承担了bean的注册以及管理工作。它们之间的关系就如下图：
 
-
-
-【图片1】
-
-
+![依赖关系图](https://github.com/jasonli822/java_technology_stack/blob/master/images/SpringBoot/%E6%A0%B8%E5%BF%83%E7%9F%A5%E8%AF%86%E6%B8%85%E5%8D%95/1.png)
 
 `DefaultListableBeanFactory`作为一个比较通用的BeanFactory实现，它同时也实现了BeanDefinitionRegistry接口，因此它就承担了Bean的注册管理工作。从图中可以看出，BeanFactory接口中主要包含getBean、containBean、getType、getAliases等管理bean的方法，而BeanDefinitionRegistry接口则包含registerBeanDefinition、removeBeanDefinition、getBeanDefinition等注册管理BeanDefinition的方法。
 
@@ -56,6 +52,72 @@ beanRegistry.registerBeanDefinition("beanName",definition);
 BeanFactory container = (BeanFactory)beanRegistry;
 Business business = (Business)container.getBean("beanName");
 ```
+
+这段代码仅为了说明BeanFactory底层的大致工作流程，实际情况会更加复杂，比如bean之间的依赖关系可能定义在外部配置文件(XML/Properties)中、也可能是注解方式。Spring IoC容器的整个工作流程大致可以分为两个阶段：
+
+①、容器启动阶段
+
+容器启动时，会通过某种途径加载 `ConfigurationMetaData`。除了代码方式比较直接外，在大部分情况下，容器需要依赖某些工具类，比如： `BeanDefinitionReader`，BeanDefinitionReader 会对加载的 `ConfigurationMetaData`进行解析和分析，并将分析后的信息组装为相应的 BeanDefinition，最后把这些保存了 bean 定义的 BeanDefinition，注册到相应的 BeanDefinitionRegistry，这样容器的启动工作就完成了。这个阶段主要完成一些准备性工作，更侧重于 bean 对象管理信息的收集，当然一些验证性或者辅助性的工作也在这一阶段完成。
+
+
+
+来看一个简单例子吧，过往，所有的bean都定义在XML配置文件中，下面的代码将模拟BeanFactory如何从配置文件中加载bean的定义以及依赖关系：
+
+```java
+// 通常为BeanDefinitionRegistry的实现类，这里以DeFaultListabeBeanFactory为例
+BeanDefinitionRegistry beanRegistry = new DefaultListableBeanFactory(); 
+// XmlBeanDefinitionReader实现了BeanDefinitionReader接口，用于解析XML文件
+XmlBeanDefinitionReader beanDefinitionReader = new XmlBeanDefinitionReaderImpl(beanRegistry);
+// 加载配置文件
+beanDefinitionReader.loadBeanDefinitions("classpath:spring-bean.xml");
+
+// 从容器中获取bean实例
+BeanFactory container = (BeanFactory)beanRegistry;
+Business business = (Business)container.getBean("beanName");
+```
+
+②、Bean的实例化阶段
+
+经过第一阶段，所有bean定义都通过BeanDefinition的方式注册到BeanDefinitionRegistory中，当某个请求通过容器的getBean方法请求某个对象，或者因为依赖关系容器需要隐士调用getBean时，就会触发第二阶段的活动：容器会首先检查所请求的对象之前是否已经实例化完成。如果没有，则会根据注册的BeanDefinition所提供的信息实例化被请求对象，并为其注入依赖。当该对象装配完毕后，容器会立即将其返回给请求方法使用。
+
+
+
+BeanFactory只是Spring IoC容器的一种实现，如果没有特殊指定它采用延迟初始化策略:只有当访问容器中的某个对象时，才对该对象进行初始化和依赖注入操作。而在实际场景下，我们更多的使用另外一种类型的容器：`ApplicationContext`，它构建在BeanFactory之上，属于更高级的容器，除了具有BeanFactory的所有能力之外，还提供对事件监听机制以及国际化支持等。它管理的bean,在容器启动时全部完成初始化和依赖注入操作。
+
+
+
+#### 1.2、Spring容器扩展机制
+
+IoC容器负责管理容器中所有bean的生命周期，而在bean生命周期的不同阶段，Spring提供了不同的扩展点来改变bean的命运。在容器的启动阶段， BeanFactoryPostProcessor允许我们在容器实例化相应对象之前，对注册到容器的BeanDefinition所保存的信息做一些额外的操作，比如修改bean定义的某些属性或者增加其它信息等。
+
+
+
+如果要自定义扩展类，通常要实现 `org.springframework.beans.factory.config.BeanFactoryPostProcessor`接口，与此同时，因为容器中可能有多个BeanFactoryPostProcessor，可能还需要实现 `org.springframework.core.Ordered`接口，以保证BeanFactoryPostProcessor按照顺序执行。Spring提供了为数不多的BeanFactoryPostProcessor实现，我们以 `PropertyPlaceholderConfigurer`来说明其大致的工作流程。
+
+
+
+在Spring项目的XML配置文件中，经常可以看到许多配置项的值使用占位符，二将占位符所代表的值单独配置到独立的properties文件，这样可以将散落在不同XML文件中的配置集中管理，而且也方便运维根据不同的环境进行配置不同的值。这个非常实用的功能就是由PropertyPlaceholderConfigure负责实现的。
+
+
+
+根据前文，当BeanFactory在第一阶段加载完所有配置信息时，BeanFactory中保存的对象的属性还是以占位符方式存在的，比如 `${jdbc.mysql.url}`。当PropertyPlaceholderConfigurer作为BeanFactoryPostProcessor被应用时，它会使用properties配置文件中的值来替换相应的BeanDefinition中占位符所表示的属性值。当需要实例化bean时，bean定义中的属性值就已经被替换成我们配置的值。当然其实现比上面描述的要复杂一些，这里仅说明其大致工作原理，更详细的实现可以参考其源码。
+
+
+
+与之相似的，还有 `BeanPostProcessor`，其存在于对象实例化阶段。跟BeanFactoryPostProcessor类似，它会处理容器内所有符合条件并且已经实例化后的对象。简单的对比，BeanFactoryPostProcessor处理bean的定义，而BeanPostProcessor则处理bean完成实例化后的对象。BeanPostProcessor定义了两个接口：
+
+```java
+public interface BeanPostProcessor {
+    // 前置处理
+    Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException;
+    // 后置处理
+    Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException;
+}
+```
+
+为了理解这两个方法执行的时机，简单的了解下bean的整个生命周期：
+
+![bean生命周期](https://github.com/jasonli822/java_technology_stack/blob/master/images/SpringBoot/%E6%A0%B8%E5%BF%83%E7%9F%A5%E8%AF%86%E6%B8%85%E5%8D%95/2.png)
 
 
 
