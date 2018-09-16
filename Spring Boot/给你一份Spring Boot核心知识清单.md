@@ -119,7 +119,25 @@ public interface BeanPostProcessor {
 
 ![bean生命周期](https://github.com/jasonli822/java_technology_stack/blob/master/images/SpringBoot/%E6%A0%B8%E5%BF%83%E7%9F%A5%E8%AF%86%E6%B8%85%E5%8D%95/2.png)
 
+`postProcessBeforeInitialization()`方法与 `postProcessAfterInitialization()`分别对应图中前置处理和后置处理两个步骤将执行的方法。这两个方法中都传入了bean对象实例的引用，为扩展容器的对象实例化过程提供了很大便利，在这儿几乎可以对传入的实例执行任何操作。注解、AOP等功能的实现均大量使用了 `BeanPostProcessor`，比如有一个自定义注解，你完全可以实现BeanPostProcessor的接口，在其中判断bean对象的脑袋上是否有该注解，如果有，你可以对这个bean实例执行任何操作，想想是不是非常的简单？
 
+再来看一个更常见的例子，在Sprig中经常能看到各种各样的Aware接口，其作用就是在对象实例化完成以后将Aware接口定义中规定的依赖注入到当前实例中。比较常见的`ApplicationCtontextAware`接口，实现了这个接口的类都可以获取一个ApplicationContext对象。当容器中每个对象的实例化过程走到BeanPostProcessor前置处理这一步时，容器会检测到之前注册到容器的ApplicationContextAwareProcessor,然后就会调用其postProcessBeforeInitialization()方法，检查并设置Aware相关依赖。看看代码吧，是不是很简单：
+
+```java
+// 代码来自：org.springframework.context.support.ApplicationContextAwareProcessor
+// 其postProcessBeforeInitialization方法调用了invokeAwareInterfaces方法
+private void invokeAwareInterfaces(Object bean) {
+    if (bean instanceof EnvironmentAware) {
+        ((EnvironmentAware) bean).setEnvironment(this.applicationContext.getEnvironment());
+    }
+    if (bean instanceof ApplicationContextAware) {
+        ((ApplicationContextAware) bean).setApplicationContext(this.applicationContext);
+    }
+    // ......
+}
+```
+
+最后总结一下，本小节内容和你一起回顾了Sprig容器的部分核心内容，限于篇幅不能写更多，但理解这部分内容，足以让你轻松理解Spring Boot的启动原理，如果在后续的学习过程中遇到一些晦涩难懂的知识，再回过头来看看Spring的核心知识，也许有意想不到的效果。也许Spring Boot的中文资料很少，但Spring中文资料和书籍有太多太多，总有东西能给你启发。
 
 
 
