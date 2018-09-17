@@ -14,7 +14,7 @@
 
 
 
-### 抛砖引玉：探索Spring IoC容器
+###  一、抛砖引玉：探索Spring IoC容器
 
 如果看过`SpringApplication.run()`方法的源码，Spring Boot冗长无比的启动流程一定会让你抓狂，透过现象看本质，springAppplication只是将一个典型的Spring应用的启动流程进行了扩展，因此，透彻理解Spring容器是打开Spring Boot大门的一把钥匙。
 
@@ -138,6 +138,68 @@ private void invokeAwareInterfaces(Object bean) {
 ```
 
 最后总结一下，本小节内容和你一起回顾了Sprig容器的部分核心内容，限于篇幅不能写更多，但理解这部分内容，足以让你轻松理解Spring Boot的启动原理，如果在后续的学习过程中遇到一些晦涩难懂的知识，再回过头来看看Spring的核心知识，也许有意想不到的效果。也许Spring Boot的中文资料很少，但Spring中文资料和书籍有太多太多，总有东西能给你启发。
+
+
+
+### 二、夯实基础：JavaConfig与常见Annotation
+
+#### 2.1、JavaConfig
+
+我知道bean是Spring IOC种非常核心的概念，Spring容器负责bean的生命周期的管理。在最初，Spring使用XML配置文件的方式来描述bean的定义以及相互之间的依赖关系，但随着 Spring的发展，越来越多的人对这种方式表示不满，因为Spring项目的所有业务类均以bean的形式配置在XML文件中，造成了大量的XML文件，使项目变得复杂且难以管理。
+
+后来，基于纯Java Annotation依赖诸如胯关节`Guice`出世，其性能明显优于采用XML方式的Spring，甚至有部分人认为，`Guice`可以完全取代Spring（Guice仅是一个轻量级IOC框架，取代Spring还差的挺远）。正式这样的危机感，促使Spring及社区推出并持续完善了`JavaConfig`子项目，它基于Java代码和Annotation注解来描述 bean之间的依赖绑定关系。比如，下面是使用 XML 配置方式来描述bean的定义。
+
+```xml
+<bean id="bookService" class="cn.moondev.service.BookServiceImpl"></bean>
+```
+
+而基于JavaConfig的配置形式是这样的“
+
+```java
+@Configuration
+public class MoonBookConfiguration {
+    // 任何标志了@Bean的方法，其返回值将作为一个bean注册到Spring IOC容器中
+    // 方法名默认成为该bean定义的id
+    @Bean
+    public BookService bookService() {
+        return new BookServiceImpl();
+    }
+}
+```
+
+如果两个bean之间有依赖关系的话，在XML配置中应该是这样：
+
+```xml
+<bean id="bookService" class="cn.moondev.service.BookServiceImpl">
+    <property name="dependencyService" ref="dependencyService"/>
+</bean>
+<bean id="otherService" class="cn.moondev.service.OtherServiceImpl">
+    <property name="dependencyService" ref="dependencyService"/>
+</bean>
+<bean id="dependencyService" class="DependencyServiceImpl"/>
+```
+
+而在JavaConfig中则是这样：
+
+```java
+@Configuration
+public class MoonBookConfiguration {
+    // 如果一个bean依赖另一个bean,则直接调用对应JavaConfig类中依赖bean的创建方法即可
+    // 这里直接调用dependencyService()
+    @Bean
+    public BookServcie bookServcie() {
+        return new BookServiceImpl(dependencyService());
+    }
+    @Bean
+    public OtherService othereServcie() {
+        return new OtherServiceImpl(dependencyService);
+    }
+    @Bean
+    public DependencyService dependencyService() {
+        return new DependencyServiceImpl();
+    }
+}
+```
 
 
 
