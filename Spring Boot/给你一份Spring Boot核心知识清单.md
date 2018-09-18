@@ -201,5 +201,37 @@ public class MoonBookConfiguration {
 }
 ```
 
+#### 2.2、@ComponentScan
 
+`@ComponentScan`注解对应XML配置形式中的`<context:component-scan>`元素，表示启用组件扫描，Spring会自动扫描所有通过注解配置的bean，然后将其注册到IOC容器中。我们可以通过`basePackages`等属性来指定`@ComponentScan`自动扫描的范围，如果不指定，默认从声明`@ComponentScan`所在类的`package`进行扫描。正因为如此，SpringBoot的启动类都默认在`src/main/java`下。
+
+#### 2.3、@Import
+
+`@Import`注解用于导入配置类，举个简单的例子：
+
+```java
+@Configuration
+public class MoonBookConfiguration {
+    @Bean
+    public BookService bookService() {
+        return new BookServiceImpl();
+    }
+}
+```
+
+现在有另外一个配置类，比如：`MoonUserConfiguration`，这个配置类中有一个bean依赖于 `MoonBookConfiguration`中的bookService，如何将这两个bean组合在一起？借助`@Import`即可：
+
+```java
+@Configuration
+// 可以同时导入多个配置类，比如：@Import({A.class,B.class})
+@Import(MoonBookConfiguration.class)
+public class MoonUserConfiguration {
+    @Bean
+    public UserService userService(BookService bookService) {
+        return new UserServiceImpl(bookService);
+    }
+}
+```
+
+需要注意的是，在4.2之前， `@Import`注解只支持导入配置类，但是在4.2之后，它支持导入普通类，并将这个类作为一个bean的定义注册到IOC容器中。
 
