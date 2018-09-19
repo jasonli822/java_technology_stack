@@ -227,3 +227,46 @@ Thread-1 =>3
 ```
 
 以上代码其实就是将ThreadLocal替换成了MyThreadLocal，仅此而已，运行效果和之前一样，也是正确的。
+
+
+
+### 利用threadLocal把拦截器中的对象传递到controller或service中
+
+[https://blog.csdn.net/xiaozh620/article/details/77621961](https://blog.csdn.net/xiaozh620/article/details/77621961)
+
+可以用request携带数据。
+
+更优雅的方式是用`threadlocal`。请求进入tomcat和产生响应前，都处于同一个线程中。
+
+比如在一个登录拦截器中，在`preHandle`方法中登录成功后，放行前，想把user对象传到controller或service中
+
+1. 创建一个类 `UserThreadLocal.java`
+
+   ```java
+   public class UserThreadLocal {
+       // 把构造函数私有，外面不能new，只能通过下面两个方法操作
+       private UserThreadLocal() {
+           
+       }
+       private static final ThreadLocal<User> LOCAL = new ThreadLocal<User>();
+       
+       public stataic void set(User user) {
+           LOCAL.set(user);
+       }
+       
+       public static User get() {
+           return LOCAL.get();
+       }
+   }
+   ```
+
+   相当于一个容器，此容器伴随着线程，线程启动，就有这个容器，销毁，容器就跟着销毁。生命周期就是这个线程。
+
+2. 在拦截器，登录成功后，放行前加上
+
+   ```java
+   // 登录成功
+   UserThreadLocal.set(user);//将user对象放置在本地线程中，方便controller和service获取
+   ```
+
+3. 
