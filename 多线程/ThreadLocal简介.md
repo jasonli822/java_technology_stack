@@ -269,4 +269,22 @@ Thread-1 =>3
    UserThreadLocal.set(user);//将user对象放置在本地线程中，方便controller和service获取
    ```
 
-3. 
+   由于tomcat的运行机制，要及时清空threadLocal的内容
+
+   以下可以放在拦截器的afterCompletion方法中
+
+   ```java
+   /**
+   * tomcat 底层 每一个请求都是一个线程，如果每一个请求都启动一个线程性能就会降低，
+   * 1.于是就有了线程池，而线程池中的线程并不是真正销毁或真正启动的
+   * 2.也就是说这个请求的线程是个可服用的线程，第二次请求可能还会拿到刚刚的线程
+   * 3.若不清空，里面本身就有user对象，数据会错乱                                       
+   */
+   UserThreadLocal.set(null); // 清空本地线程中的user对象数据
+   ```
+
+3. 在controller或service中调用
+
+   ```java
+   User user = UserThreadLocal.get();
+   ```
