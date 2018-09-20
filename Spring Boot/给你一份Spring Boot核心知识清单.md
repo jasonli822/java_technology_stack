@@ -235,3 +235,169 @@ public class MoonUserConfiguration {
 
 需要注意的是，在4.2之前， `@Import`注解只支持导入配置类，但是在4.2之后，它支持导入普通类，并将这个类作为一个bean的定义注册到IOC容器中。
 
+#### 2.4、@Conditional
+
+`@Conditional`注解表示在满足某种条件后才初始化一个bean或者启用某些配置。它一般用在由`@Component`、`@Service`、`@Configuration`等注解标识的类上面，或者由`@Bean`标记的方法上。如果一个`@Configruation`类标记了`@Conditional`，则该类中所有标识了`@Bean`的方法和`@Import`注解导入的相关类将遵从这些条件。
+
+在Spring里面可以很方便的编写你自己的条件类，所要做的就是实现`Condition`接口，并覆盖它的`matches()`方法。举个例子，下面的简单类表示只有在`Classpath`里存在`JdbcTemplate`类时才生效：
+
+```java
+public class JdbcTemplateCondition implements Condition {
+    @Override
+    public boolean matches(ConditionContext conditionContext, AnnotatedTypeMetadata annotatedTypedata) {
+        try {
+            conditionContext.getClassLoader().loadClass("org.springframework.jdbc.core.JdbcTemplate");
+            return true;
+        } catch(ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+}
+```
+
+当你用Java来声明bean的时候，可以使用这个自定义条件类：
+
+```java
+@Conditional(JdbcTemplateCondition.class)
+@Servcie
+public MyService service() {
+    ......
+}
+```
+
+这个例子中只有当`jdbcTemplateCondition`类的条件成立时才会创建MyServcie这个bean。也就是说MyServcie这bean的创建条件是`classpath`里面包含`jdbcTemplate`，否则这个bean的声明就会被忽略掉。
+
+`Spring Boot`定义了很多有趣的条件，并把他们运用到了配置类上，这些配置类构成了`Spring Boot`的自动配置的基础。`Spring Boot`运用条件化配置的方法是：定义多个特殊的条件化注解，并将它们用到配置类上。下面列出了`Spring Boot`提供的部分条件化注解：
+
+| 条件化注解                      | 配置生效条件                                         |
+| ------------------------------- | ---------------------------------------------------- |
+| @ConditionalOnBean              | 配置了某个特定bean                                   |
+| @ConditionalOnMissingBean       | 没有配置特定bean                                     |
+| @ConditionalOnClass             | Classpath里有指定的类                                |
+| @ConditionalOnMissingClass      | Classpath里没有指定的类                              |
+| @ConditionalOnExpression        | 给定的Spring Expression Language表达式计算结果为true |
+| @ConditionalOnJava              | Java的版本匹配特定值或者一个范围值                   |
+| @ConditionalOnProperty          | 指定的配置属性要有一个明确的值                       |
+| @ConditionalOnResource          | Classpath里有指定的资源                              |
+| @ConditionalOnWebApplication    | 这是一个Web应用程序                                  |
+| @ConditionalOnNotWebApplication | 这不是一个Web应用程序                                |
+
+#### 2.5、@ConfigurationProperties与@EnalbeConfigurationProperties
+
+当某些属性的值需要配置的时候，我们一般会在`application.properties`文件中新建配置项，然后在bean中使用`@Value`注解来获取配置的值，比如下面配置数据源的代码。
+
+```properties
+// jdbc config
+jdbc.mysql.url=jdbc:mysql://localhost:3306/sampledb
+jdbc.mysql.username=root
+jdbc.mysql.password=123456
+......
+```
+
+```java
+// 配置数据源
+@Configuration
+public class HikariDataSourceConfiguration {
+
+    @Value("jdbc.mysql.url")
+    public String url;
+    @Value("jdbc.mysql.username")
+    public String user;
+    @Value("jdbc.mysql.password")
+    public String password;
+    
+    @Bean
+    public HikariDataSource dataSource() {
+        HikariConfig hikariConfig = new HikariConfig();
+        hikariConfig.setJdbcUrl(url);
+        hikariConfig.setUsername(user);
+        hikariConfig.setPassword(password);
+        // 省略部分代码
+        return new HikariDataSource(hikariConfig);
+    }
+}
+```
+
+使用`@Value`注解注入的属性通常都比较简单，如果同一个配置在多个地方使用，也存在不方便维护的问题（考虑下，如果有几十个地方在使用某个配置，而现在你想改下名字，你改怎么做？）。对于更为复杂的配置，Spring Boot提供了更优雅的实现方式，那就是 `@ConfigurationProperties`注解。我们可以通过下面的方式来改写上面的代码：
+
+```java
+@Component
+//  还可以通过@PropertySource("classpath:jdbc.properties")来指定配置文件
+@ConfigurationProperties("jdbc.mysql")
+// 前缀=jdbc.mysql，会在配置文件中寻找jdbc.mysql.*的配置项
+pulic class JdbcConfig {
+    public String url;
+    public String username;
+    public String password;
+}
+
+@Configuration
+public class HikariDataSourceConfiguration {
+
+    @AutoWired
+    public JdbcConfig config;
+    
+    @Bean
+    public HikariDataSource dataSource() {
+        HikariConfig hikariConfig = new HikariConfig();
+        hikariConfig.setJdbcUrl(config.url);
+        hikariConfig.setUsername(config.username);
+        hikariConfig.setPassword(config.password);
+        // 省略部分代码
+        return new HikariDataSource(hikariConfig);
+    }
+}
+```
+
+`@ConfigurationProperties`对于更为复杂的配置，处理起来也是得心应手，比如有如下配置文件：
+
+```properties
+#App
+app.menus[0].title=Home
+app.menus[0].name=Home
+app.menus[0].path=/
+app.menus[1].title=Login
+app.menus[1].name=Login
+app.menus[1].path=/login
+
+app.compiler.timeout=5
+app.compiler.output-folder=/temp/
+
+app.error=/error/
+```
+
+可以定义如下配置类来接收这些属性
+
+```java
+@Component
+@ConfigurationProperties("app")
+public class AppProperties {
+
+    public String error;
+    public List<Menu> menus = new ArrayList<>();
+    public Compiler compiler = new Compiler();
+
+    public static class Menu {
+        public String name;
+        public String path;
+        public String title;
+    }
+
+    public static class Compiler {
+        public String timeout;
+        public String outputFolder;
+    }
+}
+```
+
+`@EnableConfigurationProperties`注解表示对`@ConfigurationProperties`的内嵌支持，默认会将对应Properties Class作为bean注入到IOC容器中，即在相应的Properties类上不用加`@Component`注解。
+
+### 三、削铁如泥：SpringFactoriesLoader详解
+
+JVM提供了3种类加载器：`BootstrapClassLoader`、`ExtClassLoader`、`AppClassLoader`分别加载Java核心类库、扩展库以及应用的类路径(`CLASSPATH`)下的类库。JVM通过双亲委派模型进行类的加载，我们也可以通过继承`java.lang.classloader`实现自己的类加载器。
+
+何为双亲委派模型？当一个类加载器收到类加载任务时，会先交给自己的父加载器去完成，一次最终加载任务都会传递到最顶层的BootStrapClassLoader，只有当父加载器无法完成加载任务时，才会尝试自己来加载。
+
+采用双亲委派模型的一个好处时保证使用不同类加载器最终得到的都是同一个对象，这样就可以保证Java核心库的类型安全，比如，加载位于rt.jar包中的`java.lang.Object`类，不管时哪个加载器加载这个类，最终都是委托给顶层的BootstrapClassLoader来加载，这样就可以保证任何的类加载器最终得到的都是同样要给Object对象。查看ClassLoader源码，对双亲委派模型会有更直观的认识：
+
