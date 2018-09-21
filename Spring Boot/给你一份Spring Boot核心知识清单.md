@@ -401,3 +401,90 @@ JVM提供了3种类加载器：`BootstrapClassLoader`、`ExtClassLoader`、`AppC
 
 采用双亲委派模型的一个好处时保证使用不同类加载器最终得到的都是同一个对象，这样就可以保证Java核心库的类型安全，比如，加载位于rt.jar包中的`java.lang.Object`类，不管时哪个加载器加载这个类，最终都是委托给顶层的BootstrapClassLoader来加载，这样就可以保证任何的类加载器最终得到的都是同样要给Object对象。查看ClassLoader源码，对双亲委派模型会有更直观的认识：
 
+```java
+protected Class<?> loadClass(String name, boolean resolve) {
+    synchronized (getClassLoadingLock(name)) {
+    // 首先，检查该类是否已经被加载，如果从JVM缓存中找到该类，则直接返回
+    Class<?> c = findLoadedClass(name);
+    if (c == null) {
+        try {
+            // 遵循双亲委派的模型，首先会通过递归从父加载器开始找，
+            // 直到父类加载器是BootstrapClassLoader为止
+            if (parent != null) {
+                c = parent.loadClass(name, false);
+            } else {
+                c = findBootstrapClassOrNull(name);
+            }
+        } catch (ClassNotFoundException e) {}
+        if (c == null) {
+            // 如果还找不到，尝试通过findClass方法去寻找
+            // findClass是留给开发者自己实现的，也就是说
+            // 自定义类加载器时，重写此方法即可
+           c = findClass(name);
+        }
+    }
+    if (resolve) {
+        resolveClass(c);
+    }
+    return c;
+    }
+}
+```
+
+但双亲委派模型并不能解决所有的类加载问题，比如，Java提供了很多服务提供者接口(`Service ProviderInterface`, SPI)，允许第三方为这些接口提供实现。常见的SPI有JDBC、JNDI、JAXP等，这些SPI的接口由核心类库提供，却由第三方实现，这样就存在一个问题：SPI的接口是Java核心库的一部分，是由BootstrapClassLoader加载的；SPI实现的Java类一般是由AppClassLoader来加载的。BootStrapClassLoader是无法找到SPI的实现落地额，因为它只加载 Java的核心类库。它也不能代理给AppClassLoader，因为它是顶层的类加载器。也就是说，双亲委派模型并不能解决这个问题。
+
+线程上下文类加载器(`ContextClassLoader`)正好解决了这个问题。从名称上看，可能会误解它是一种新的类加载器，实际上，它仅仅是Thread类的一个变量而已，可以通过`setContextClassLoader(ClassLoader classLoader)`和`getClassLoader()`来设置和获取该对象。如果不做任何的设置，Java应用线程的上下文类加载器默认就是AppClassLoader。在核心类库使用SPI接口时，传递的类加载器使用线程上下文类加载器，就可以成功的加载到SPI实现的类。线程上下文类加载器在很多SPI的实现中都会用到。但在JDBC中，你可能会看到一种更为直接的方式，比如，JDBC驱动管理`java.sql.Drive`中的`loadInitialDrivers()`方法中，你可以直接看到JDK时如何装载驱动的：
+
+```java
+for (String aDriver : driversList) {
+    try {
+        // 直接使用AppClassLoader
+        Class.forName(aDriver, true, ClassLoader.getSystemClassLoader());
+    } catch (Exception ex) {
+        println("DriverManager.Initialize: load failed: " + ex);
+    }
+}
+```
+
+其实讲解线程上下文类加载器，最主要是让大家看到`Thread.currentThread().getCalssLoader()`和`Thread.currentThread().getContextClassLoader()`时会不会一脸懵逼，这两者除了在许多底层框架中取得classLoader可能会有所不同，其他大多数业务场景下都是一样的，大家只要知道它是为了解决什么问题而存在的即可。
+
+类加载器除了加载class外，还有一个非常重要的功能，就是加载资源，它可以从jar包中读取任何资源文件，比如，`ClassLoader.getResources(String name)`方法就是用于读取jar包中的资源文件，其代码如下：
+
+```java
+public Enumeration<URL> getResources(String name) throws IOException {
+    Enumeration<URL>[] tmp = (Enumeration<URL>[]) new Enumeration<?>[2];
+    if (parent != null) {
+        tmp[0] = parent.getResources(name);
+    } else {
+        tmp[0] = getBootstrapResources(name);
+    }
+    tmp[1] = findResources(name);
+    return new CompoundEnumeration<>(tmp);
+}
+```
+
+是不是觉得有点眼熟，不错，它的逻辑其实跟类加载的逻辑是一样的，首先判断父类加载器是否为空，不为空则委托父类加载器执行资源查找任务，直到BootstrapClassLoader，最后才轮到自己查找。而不同的类加载器负责扫描不同路径下的jar包，就如同加载class一样，最后会扫描所有的jar包，找到符合条件的资源文件。
+
+类加载器的 `findResources(name)`方法会遍历其负责加载的所有jar包，找到jar包中名称为name的资源文件，这里的资源可以是任何文件，甚至是.class文件，比如下面的示例，用于查找Array.class文件：
+
+```java
+// 寻找Array.class文件
+public static void main(String[] args) throws Exception{
+    // Array.class的完整路径
+    String name = "java/sql/Array.class";
+    Enumeration<URL> urls = Thread.currentThread().getContextClassLoader().getResources(name);
+    while (urls.hasMoreElements()) {
+        URL url = urls.nextElement();
+        System.out.println(url.toString());
+    }
+}
+```
+
+运行后可以得到如下结果：
+
+```bash
+$JAVA_HOME/jre/lib/rt.jar!/java/sql/Array.class
+```
+
+根据资源文件的URL，可以构造相应的文件来读取资源内容。
+
