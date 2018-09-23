@@ -513,4 +513,17 @@ public static List<String> loadFactoryNames(Class<?> factoryClass, ClassLoader c
 }
 ```
 
-有了前面关于ClassLoader的知识，再来理解这段代码，是不是感觉豁然开朗：从 `CLASSPATH`下的每个Jar包中搜寻所有 `META-INF/spring.factories`配置文件，然后将解析properties文件，找到指定名称的配置后返回。需要注意的是，其实这里不仅仅是会去ClassPath路径下查找，会扫描所有路径下的Jar包，只不过这个文件只会在Classpath下的jar包中。
+有了前面关于ClassLoader的知识，再来理解这段代码，是不是感觉豁然开朗：从 `CLASSPATH`下的每个Jar包中搜寻所有 `META-INF/spring.factories`配置文件，然后将解析properties文件，找到指定名称的配置后返回。需要注意的是，其实这里不仅仅是会去ClassPath路径下查找，会扫描所有路径下的Jar包，只不过这个文件只会在Classpath下的jar包中。来简单看下 `spring.factories`文件的内容吧：
+
+```java
+// 来自 org.springframework.boot.autoconfigure下的META-INF/spring.factories
+// EnableAutoConfiguration后文会讲到，它用于开启Spring Boot自动配置功能
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration,\
+org.springframework.boot.autoconfigure.aop.AopAutoConfiguration,\
+org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration\
+```
+
+执行 `loadFactoryNames(EnableAutoConfiguration.class,classLoader)`后，得到对应的一组 `@Configuration`类， 我们就可以通过反射实例化这些类然后注入到IOC容器中，最后容器里就有了一系列标注了 `@Configuration`的JavaConfig形式的配置类。
+
+这就是 `SpringFactoriesLoader`，它本质上属于Spring框架私有的一种扩展方案，类似于SPI，Spring Boot在Spring基础上的很多核心功能都是基于此，希望大家可以理解。
