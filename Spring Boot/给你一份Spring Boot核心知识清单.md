@@ -527,3 +527,7 @@ org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration\
 执行 `loadFactoryNames(EnableAutoConfiguration.class,classLoader)`后，得到对应的一组 `@Configuration`类， 我们就可以通过反射实例化这些类然后注入到IOC容器中，最后容器里就有了一系列标注了 `@Configuration`的JavaConfig形式的配置类。
 
 这就是 `SpringFactoriesLoader`，它本质上属于Spring框架私有的一种扩展方案，类似于SPI，Spring Boot在Spring基础上的很多核心功能都是基于此，希望大家可以理解。
+
+###  四、另一件武器：Spring容器的事件监听机制
+
+过去，事件监听机制多用于图形界面编程，比如：**点击**按钮、在文本框**输入**内容等操作被称为事件，而当事件触发时，应用程序作出一定的响应则表示应用监听了这个事件，而在服务器端，事件的监听机制更多的用于异步通知以及监控和异常处理。Java提供了实现事件监听机制的两个基础类：自定义事件类型扩展自 `java.util.EventObject`、事件的监听器扩展自 `java.util.EventListener`。来看一个简单的实例：简单的监控一个方法的耗时。
