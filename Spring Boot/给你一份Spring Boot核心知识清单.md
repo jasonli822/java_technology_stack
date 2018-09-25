@@ -399,7 +399,7 @@ JVM提供了3种类加载器：`BootstrapClassLoader`、`ExtClassLoader`、`AppC
 
 何为双亲委派模型？当一个类加载器收到类加载任务时，会先交给自己的父加载器去完成，一次最终加载任务都会传递到最顶层的BootStrapClassLoader，只有当父加载器无法完成加载任务时，才会尝试自己来加载。
 
-采用双亲委派模型的一个好处时保证使用不同类加载器最终得到的都是同一个对象，这样就可以保证Java核心库的类型安全，比如，加载位于rt.jar包中的`java.lang.Object`类，不管时哪个加载器加载这个类，最终都是委托给顶层的BootstrapClassLoader来加载，这样就可以保证任何的类加载器最终得到的都是同样要给Object对象。查看ClassLoader源码，对双亲委派模型会有更直观的认识：
+采用双亲委派模型的一个好处是保证使用不同类加载器最终得到的都是同一个对象，这样就可以保证Java核心库的类型安全，比如，加载位于rt.jar包中的`java.lang.Object`类，不管是哪个加载器加载这个类，最终都是委托给顶层的BootstrapClassLoader来加载，这样就可以保证任何的类加载器最终得到的都是同样要给Object对象。查看ClassLoader源码，对双亲委派模型会有更直观的认识：
 
 ```java
 protected Class<?> loadClass(String name, boolean resolve) {
@@ -531,3 +531,88 @@ org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration\
 ###  四、另一件武器：Spring容器的事件监听机制
 
 过去，事件监听机制多用于图形界面编程，比如：**点击**按钮、在文本框**输入**内容等操作被称为事件，而当事件触发时，应用程序作出一定的响应则表示应用监听了这个事件，而在服务器端，事件的监听机制更多的用于异步通知以及监控和异常处理。Java提供了实现事件监听机制的两个基础类：自定义事件类型扩展自 `java.util.EventObject`、事件的监听器扩展自 `java.util.EventListener`。来看一个简单的实例：简单的监控一个方法的耗时。
+
+首先定义事件类型，通常的做法是扩展Event Object，随着事件的发生，相应的状态通常都封装在此类中：
+
+```java
+public class MethodMonitorEvent extends EventObject {
+    // 时间戳，用于记录方法开始执行时间
+    public long timestamp;
+    
+    public MethodMonitorEvent(Object source) {
+        super(source);
+    }
+}
+```
+
+事件发布之后，相应的监听器极客对该类型的事件进行处理，我们可以在方法开始执行之前发布一个begin事件，在方法执行结束之后发一个end事件，相应地，事件监听器需要提供方法对这两种情况下接收到的事件进行处理：
+
+```java
+// 1.定义事件监听接口
+public interface MethodMonitorEventListener extends EventListener {
+    // 处理方法之前发布的事件
+    public void onMethodBegin(MethodMonitorEvent event);
+    // 处理方法结束时发布的事件
+    public void onMethodEnd(MethodMonitorEvent event);
+}
+// 2.事件监听接口的实现：如何处理
+public class AbstractMethodMonitorEventListener implements MethodMonitorEventListener {
+    @Override
+    public void onMethodBegin(MethodMonitorEvent event) {
+        // 记录方法开始执行时的时间
+        event.timestamp = System.currentTimeMillis();
+    }
+    @Override
+    public void onMethodEnd(MethodMonitorEvent event) {
+        // 计算方法耗时
+        long duration = System.currentTmeMillis() - event.timestamp;
+        System.out.println("耗时：" + duration);
+    }
+}
+```
+
+事件监听器接口针对不同的事件发布实际提供相应的处理方法定义，最重要的时，其方法只接收 MethodMonitorEvent参数，说明这个监听器类只负责监听器对应的事件并进行处理。有了事件和监听器，剩下的就是发布事件，然后让相应的监听器监听并处理。通常情况，我们会有一个事件发布者，它本身作为事件源，在合适的时机，将相应的事件发布给对应的事件监听器：
+
+```java
+public class MethodMonitorEventPublisher {
+    private List<MethodMonitorEventListener> listeners = new ArrayList<MethodMonitorEventLIstener>();
+    public void methodMonitor() {
+        MethodMonitorEvent eventObject = new MethodMonitorEvent(this);
+        publishEvent("begin", eventObject);
+        // 模拟方法执行：休眠5秒钟
+        TimeUnit.SECONDS.sleep(5);
+        publicEvent("end",eventObject);
+    }
+    
+    private void publishEvent(String status, MethodMonitorEvent event) {
+        // 避免在事件处理期间，监听器被移除，这里为了安全做一个复制操作
+        List<MethodMonitorEventListener> copyLIsteners = new ArrayList<MethodMonitorEventListener>(listeners);
+        for (MethodMonitorEventListener listener : copyListeners) {
+            if ("begin".equals(status)) {
+                listener.onMethodBegin(event);
+            } else {
+                listener.onMethodEnd(event);
+            }
+        }
+    }
+    public static void main(String[] args) {
+        MethodMonitorEventPublisher publisher = new MethodMonitorEventPublisher();
+        publisher.addEventListener(new AbstractMethodMonitorEventListener());
+        publisher.methodMonitor();
+    }
+    // 省略实现
+    public void addEventListener(MethodMonitorEventListener listener){}
+    public void removeEventListener(MethodMonitorEventListener listener){}
+    public void removeAllListeners() {}
+}
+```
+
+对于事件发布者(事件源)通常需要关注两点：
+
+- 1. 在合适的时机发布事件。此例中的methodMonitor()方法是事件发布的源头，其在方法执行之前和结束之后两个时间点发布MethodMonitorEvent事件，每个时间点发布的事件都会传给相应的监听器进行处理。在具体实现时需要注意的是，事件发布是顺序执行，为了不影响处理性能，事件监听器的处理逻辑应尽量简单。
+  2. 事件监听器的管理。publisher类中提供了事件监听器的注册与移除方法，这样客户端可以根据实际情况决定是否需要注册新的监听器或者移除某个监听器。如果这里没有提供remove方法，那么注册的监听器示例将一直被MethodMonitorEventPublisher引用，即使已经废弃不用了，也依然在发布者的监听器列表中，这会导致隐性的内存泄漏。
+
+#### Spring 容器内的事件监听机制
+
+Spring的ApplicationContext容器内部中的所有事件类型均继承自 `org.springframework.context.AppliationEvent`，容器中的所有监听器都实现 `org.springframework.context.ApplicationListener`接口，并且以bean的形式注册在容器中。一旦在容器内发布ApplicationEvent及其子类型的事件，注册到容器的ApplicationListener就会对这些事件进行处理。
+
