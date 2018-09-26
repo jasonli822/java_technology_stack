@@ -616,3 +616,8 @@ public class MethodMonitorEventPublisher {
 
 Spring的ApplicationContext容器内部中的所有事件类型均继承自 `org.springframework.context.AppliationEvent`，容器中的所有监听器都实现 `org.springframework.context.ApplicationListener`接口，并且以bean的形式注册在容器中。一旦在容器内发布ApplicationEvent及其子类型的事件，注册到容器的ApplicationListener就会对这些事件进行处理。
 
+你应该已经猜到是怎么回事了。
+
+ApplicationEvent继承自EventObject，Spring提供了一些默认的实现，比如： `ContextClosedEvent`表示容器在即将关闭时发布的事件类型， `ContextRefreshedEvent`表示容器在初始化或者刷新的时候发布的事件类型......
+
+容器内部使用ApplicationListener作为事件监听器接口定义，它继承自EventListener。ApplicationContext容器在启动时，会自动识别并加载EventListener类型的bean，一旦容器内有事件发布，将通知这些注册到容器的EventListener。
