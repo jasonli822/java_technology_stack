@@ -621,3 +621,14 @@ Spring的ApplicationContext容器内部中的所有事件类型均继承自 `org
 ApplicationEvent继承自EventObject，Spring提供了一些默认的实现，比如： `ContextClosedEvent`表示容器在即将关闭时发布的事件类型， `ContextRefreshedEvent`表示容器在初始化或者刷新的时候发布的事件类型......
 
 容器内部使用ApplicationListener作为事件监听器接口定义，它继承自EventListener。ApplicationContext容器在启动时，会自动识别并加载EventListener类型的bean，一旦容器内有事件发布，将通知这些注册到容器的EventListener。
+
+ApplicationContext接口继承了ApplicationEventPublished接口，该接口提供了 `void publishEvent(ApplicationEvent event)`方法定义，不难看出，ApplicationContext容器担当的就是事件发布者的角色。如果有兴趣可以查看`AbstractApplicationContext.publishEvent(ApplicationEvent event)`方法的源码：ApplicationContext将事件的发布以及监听器的管理工作委托给`ApplicationEventMulticaster`对象机制，如果有就使用其提供的实现，没有就默认初始化一个SimpleApplicationEventMulticaster作为实现。
+
+最后，如果我们业务需要在容器内部发布事件，只需要为其注入ApplicationEventPublisher即可：实现ApplicationEventPublisherAware接口或者ApplicationContextAware接口。
+
+
+
+### 五、出神入化：揭秘自动配置的原理
+
+典型的Spring Boot应用启动类一般均位于 `src/main/java` 根路径下，比如 `MoonApplication`类：
+
