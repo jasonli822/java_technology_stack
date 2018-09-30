@@ -632,3 +632,121 @@ ApplicationContext接口继承了ApplicationEventPublished接口，该接口提�
 
 典型的Spring Boot应用启动类一般均位于 `src/main/java` 根路径下，比如 `MoonApplication`类：
 
+```java
+@SpringBootApplication
+public class MoonApplication {
+    public static void main(string[] args) {
+        SpringApplication.run(MoonApplication.class, args);
+    }
+}
+```
+
+其中`@SpringBootApplication`开启组件扫描和自动配置，而`SpringApplication.run`则负责启动引导应用程序。`@SpringBootApplication`是一个复合`Annotation`，它将三个有用的注解组合在一起：
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@SpringBootConfiguration
+@EnableAutoConfiguration
+@ComponentScan(excludeFilters = {
+        @Filter(type = FilterType.CUSTOM, classes = TypeExcludeFilter.class),
+        @Filter(type = FilterType.CUSTOM, classes = AutoConfigurationExcludeFilter.class) })
+public @interface SpringBootApplication {
+    // ......
+}
+```
+
+`@SpringBootConfiguration`就是`@Configuration`，它是Spring框架的注解，标明该类是一个 `JavaConfig`配置类。而 `@ConmponentScan`启用组件扫描，前文已经详细讲解过，这里着重关注`@EnableAutoConfiguration`。
+
+`@EnableAutoConfiguration`注解表示开启Spring Boot自动配置功能，Spring Boot会根据应用的依赖、自定义的bean、classpath下有没有某个类等等因素来猜测你需要的bean，然后注册到IOC容器中。那`@EnableAutoConfiguration`是如何推算出你的需求？首先看下它的定义：
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@AutoConfigurationPackage
+@Import(EnableAutoConfigurationImportSelector.class)
+public @interface EnableAutoConfiguration {
+    // ......
+}
+```
+
+你的关注点应该在`@Import(EnableAutoConfigurationImportSelector.class)`上了，前文说过，`@Import`注解用于导入类，并将这个类作为一个bean的定义注册到容器中，这里它将把`EnableAutoConfigurationImportSelector`作为bean注入到容器中，而这个类会将所有符合条件的@Configuration配置都加载到容器中，看看它的代码：
+
+```java
+public String[] selectImports(AnnotationMetadata annotationMetadata) {
+    // 省略了大部分代码，保留一句核心代码
+    // 注意：SpringBoot最近版本中，这句代码被封装在一个单独的方法中
+    // SpringFactoriesLoader相关知识请参考前文
+    List<String> factories = new ArrayList<String>(new LinkedHashSet<String>(  
+        SpringFactoriesLoader.loadFactoryNames(EnableAutoConfiguration.class, this.beanClassLoader)));
+}
+```
+
+这个类会扫描所有的jar包，将所有符合条件的@Configuration配置类注入到容器中，何为符合条件，看看 `META-INF/spring.factories`的文件内容：
+
+```properties
+// 来自 org.springframework.boot.autoconfigure下的META-INF/spring.factories
+// 配置的key = EnableAutoConfiguration，与代码中一致
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,\
+org.springframework.boot.autoconfigure.aop.AopAutoConfiguration,\
+org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration\
+.....
+```
+
+以`DataSourceAutoConfiguration`为例，看看Spring Boot是如何自动配置的：
+
+```java
+@Configuration
+@ConditionalOnClass({ DataSource.class, EmbeddedDatabaseType.class })
+@EnableConfigurationProperties(DataSourceProperties.class)
+@Import({ Registrar.class, DataSourcePoolMetadataProvidersConfiguration.class })
+public class DataSourceAutoConfiguration {
+}
+```
+
+分别说一说：
+
+- `@ConditionalOnClass({DataSource.class,EmbeddedDatabaseType.class})`：当Classpath中存在DataSource或者EmbeddedDatabaseType类时才启用这个配置，否则这个配置将被忽略。
+
+- `@EnableConfigurationProperties(DataSourceProperties.class)`：将DataSource的默认配置类注入到IOC容器中，DataSourceproperties定义为：
+
+  ```java
+  // 提供对datasource配置信息的支持，所有的配置前缀为：spring.datasource
+  @ConfigurationProperties(prefix = "spring.datasource")
+  public class DataSourceProperties  {
+      private ClassLoader classLoader;
+      private Environment environment;
+      private String name = "testdb";
+      ......
+  }
+  ```
+
+- `@Import({Registrar.class,DataSourcePoolMetadataProvidersConfiguration.class})`：导入其他额外的配置，就以 `DataSourcePoolMetadataProvidersConfiguration`为例吧。
+
+  ```java
+  @Configuration
+  public class DataSourcePoolMetadataProvidersConfiguration {
+  
+      @Configuration
+      @ConditionalOnClass(org.apache.tomcat.jdbc.pool.DataSource.class)
+      static class TomcatDataSourcePoolMetadataProviderConfiguration {
+          @Bean
+          public DataSourcePoolMetadataProvider tomcatPoolDataSourceMetadataProvider() {
+              .....
+          }
+      }
+    ......
+  }
+  ```
+
+  DataSourcePoolMetadataProvidersConfiguration是数据库连接池提供者的一个配置类，即Classpath中存在 `org.apache.tomcat.jdbc.pool.DataSource.class`，则使用tomcat-jdbc连接池，如果Classpath中存在 `HikariDataSource.class`则使用Hikari连接池。
+
+  这里仅描述了DataSourceAutoConfiguration的冰山一角，但足以说明Spring Boot如何利用条件话配置来实现自动配置的。回顾一下， `@EnableAutoConfiguration`中导入了EnableAutoConfigurationImportSelector类，而这个类的 `selectImports()`通过SpringFactoriesLoader得到了大量的配置类，而每一个配置类则根据条件化配置来做出决策，以实现自动配置。
+
+  整个流程很清晰，但漏了一个大问题：`EnableAutoConfigurationImportSelector.selectImports()`是何时执行的？其实这个方法会在容器启动过程中执行：`AbstractApplicationContext.refresh()`，更多的细节在下一小节中说明。
+
