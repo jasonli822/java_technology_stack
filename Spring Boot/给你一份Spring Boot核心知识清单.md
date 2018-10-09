@@ -750,3 +750,49 @@ public class DataSourceAutoConfiguration {
 
   整个流程很清晰，但漏了一个大问题：`EnableAutoConfigurationImportSelector.selectImports()`是何时执行的？其实这个方法会在容器启动过程中执行：`AbstractApplicationContext.refresh()`，更多的细节在下一小节中说明。
 
+
+
+### 六、启动引导：Spring Boot应用启动的密码
+
+#### 6.1 SpringApplication初始化
+
+SpringBoot整个启动流程分为两个步骤：初始化一个SpringApplication对象、执行该对象的run方法。看下SpringApplication的初始化流程，SpringApplication的构造方法中调用initialize(Object[] sources)方法，其代码如下： 
+
+```java
+private void initialize(Object[] sources) {
+     if (sources != null && sources.length > 0) {
+         this.sources.addAll(Arrays.asList(sources));
+     }
+     // 判断是否是Web项目
+     this.webEnvironment = deduceWebEnvironment();
+     setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+     setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+     // 找到入口类
+     this.mainApplicationClass = deduceMainApplicationClass();
+}
+```
+
+初始化流程中最重要的就是通过SpringFactoriesLoader找到`spring.factories`文件中配置的 `ApplicationContextInitializer` 和 `ApplicationListener` 两个接口的实现类名称，以便后期构造相应的案例。ApplicationContextInitializer的主要目的是在 `ConfigurableApplicationContext`做refresh之前，对ConfigurableApplicationContext实例做进一步的设置或处理。ConfigurableApplicationContext继承自ApplicationContext，其主要提供了对ApplicationContext进行设置的能力。
+
+实现一个ApplicationContextInitializer非常简单，因为它只有一个方法，但大多数情况下我们没有必要自定义一个ApplicationContextInitializer，即便是Spring Boot框架，它默认也只是注册了两个实现，毕竟Spring容器已经非常成熟和稳定，你没有必要来改变它。
+
+而`ApplicationListener`的目的就没什么好说的了，它是Spring框架对Java事件监听机制的一种框架实现，具体内容在前文Spring事件监听机制这个小节有详细的讲解。这里主要说说，如果你想为Spring Boot应用添加监听器，该如何实现？
+
+Spring Boot提供了两种方式来添加自定义监听器：
+
+- 通过 `SpringApplication.addListeners(ApplicationListener<?>...listeners)`或者 `SpringApplication.setListeners(Collection<?extendsApplicationListener<?>>listeners)`两个方法来添加一个或者多个自定义监听器
+- 既然SpringApplication的初始化流程中已经从 `spring.factories`中获取到 `ApplicationListener`的实现类，那么我们直接在自己的jar包的 `META-INF/spring.factories`文件中新增配置即可：
+
+```properties
+org.springframework.context.ApplicationListener=\
+cn.moondev.listeners.xxxxListener\
+```
+
+关于SpringApplication的初始化，我们就说这么多。
+
+#### 6.2 Spring Boot启动流程
+
+Spring Boot应用的整个启动流程都封装在SpringApplication.run方法中，其整个流程真的是太长太长了，但本质上就是在Spring容器启动的基础上做了大量的扩展，按照这个思路来看看源码：
+
+
+
