@@ -794,5 +794,171 @@ cn.moondev.listeners.xxxxListener\
 
 Spring Boot应用的整个启动流程都封装在SpringApplication.run方法中，其整个流程真的是太长太长了，但本质上就是在Spring容器启动的基础上做了大量的扩展，按照这个思路来看看源码：
 
+```java
+public ConfigurableApplicationContext run(String... args) {
+        StopWatch stopWatch = new StopWatch();
+        stopWatch.start();
+        ConfigurableApplicationContext context = null;
+        FailureAnalyzers analyzers = null;
+        configureHeadlessProperty();
+        // ①
+        SpringApplicationRunListeners listeners = getRunListeners(args);
+        listeners.starting();
+        try {
+            // ②
+            ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+            ConfigurableEnvironment environment = prepareEnvironment(listeners,applicationArguments);
+            // ③
+            Banner printedBanner = printBanner(environment);
+            // ④
+            context = createApplicationContext();
+            // ⑤
+            analyzers = new FailureAnalyzers(context);
+            // ⑥
+            prepareContext(context, environment, listeners, applicationArguments,printedBanner);
+            // ⑦ 
+            refreshContext(context);
+            // ⑧
+            afterRefresh(context, applicationArguments);
+            // ⑨
+            listeners.finished(context, null);
+            stopWatch.stop();
+            return context;
+        }
+        catch (Throwable ex) {
+            handleRunFailure(context, listeners, analyzers, ex);
+            throw new IllegalStateException(ex);
+        }
+    }
+```
 
+① 通过SpringFactoriesLoader查找并加载所有的 `SpringApplicationRunListeners`，通过调用starting()方法通知所有的SpringApplicationRunListeners：应用开始启动了。SpringApplicationRunListeners其本质上就是一个事件发布者，它在SpringBoot应用启动的不同时间点发布不同应用事件类型(ApplicationEvent)，如果有哪些事件监听者(ApplicationListener)对这些事件感兴趣，则可以接收并且处理。还记得初始化流程中，SpringApplication加载了一系列ApplicationListener吗？这个启动流程中没有发现有发布事件的代码，其实都已经在SpringApplicationRunListeners这儿实现了。
+
+简单的分析一下其实现流程，首先看下SpringApplicationRunListener的源码：
+
+```java
+public interface SpringApplicationRunListener {
+
+    // 运行run方法时立即调用此方法，可以用户非常早期的初始化工作
+    void starting();
+    
+    // Environment准备好后，并且ApplicationContext创建之前调用
+    void environmentPrepared(ConfigurableEnvironment environment);
+
+    // ApplicationContext创建好后立即调用
+    void contextPrepared(ConfigurableApplicationContext context);
+
+    // ApplicationContext加载完成，在refresh之前调用
+    void contextLoaded(ConfigurableApplicationContext context);
+
+    // 当run方法结束之前调用
+    void finished(ConfigurableApplicationContext context, Throwable exception);
+
+}
+```
+
+SpringApplicationRunListener只有一个实现类： `EventPublishingRunListener`。①处的代码只会获取到一个EventPublishingRunListener的实例，我们来看看starting()方法的内容：
+
+```java
+public void starting() {
+    // 发布一个ApplicationStartedEvent
+    this.initialMulticaster.multicastEvent(new ApplicationStartedEvent(this.application, this.args));
+}
+```
+
+顺着这个逻辑，你可以在②处的 `prepareEnvironment()`方法的源码中找到 `listeners.environmentPrepared(environment);`即SpringApplicationRunListener接口的第二个方法，那不出你所料， `environmentPrepared()`又发布了另外一个事件 `ApplicationEnvironmentPreparedEvent`。接下来会发生什么，就不用我多说了吧。
+
+② 创建并配置当前应用将要使用的 `Environment`，Environment用于描述应用程序当前的运行环境，其抽象了两个方面的内容：配置文件(profile)和属性(properties)，开发经验丰富的同学对这两个东西一定不会陌生：不同的环境(eg：生产环境、预发布环境)可以使用不同的配置文件，而属性则可以从配置文件、环境变量、命令行参数等来源获取。因此，当Environment准备好后，在整个应用的任何时候，都可以从Environment中获取资源。
+
+总结起来，②处的两句代码，主要完成以下几件事：
+
+- 判断Environment是否存在，不存在就创建（如果是web项目就创建 `StandardServletEnvironment`，否则创建 `StandardEnvironment`）
+- 配置Environment：配置profile以及properties
+- 调用SpringApplicationRunListener的 `environmentPrepared()`方法，通知事件监听者：应用的Environment已经准备好
+
+③、SpringBoot应用在启动时会输出这样的东西：
+
+```plain
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::        (v1.5.6.RELEASE)
+```
+
+
+
+如果想把这个东西改成自己的涂鸦，你可以研究以下Banner的实现，这个任务就留给你们吧。
+
+④、根据是否是web项目，来创建不同的ApplicationContext容器。
+
+⑤、创建一系列 `FailureAnalyzer`，创建流程依然是通过SpringFactoriesLoader获取到所有实现FailureAnalyzer接口的class，然后在创建对应的实例。FailureAnalyzer用于分析故障并提供相关诊断信息。
+
+⑥、初始化ApplicationContext，主要完成以下工作：
+
+- 将准备好的Environment设置给ApplicationContext
+- 遍历调用所有的ApplicationContextInitializer的 `initialize()`方法来对已经创建好的ApplicationContext进行进一步的处理
+- 调用SpringApplicationRunListener的 `contextPrepared()`方法，通知所有的监听者：ApplicationContext已经准备完毕
+- 将所有的bean加载到容器中
+- 调用SpringApplicationRunListener的 `contextLoaded()`方法，通知所有的监听者：ApplicationContext已经装载完毕
+
+⑦、调用ApplicationContext的 `refresh()`方法，完成IoC容器可用的最后一道工序。从名字上理解为刷新容器，那何为刷新？就是插手容器的启动，联系一下第一小节的内容。那如何刷新呢？且看下面代码：
+
+```java
+// 摘自refresh()方法中一句代码
+invokeBeanFactoryPostProcessors(beanFactory);
+```
+
+看看这个方法的实现：
+
+```java
+protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) {
+    PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors());
+    ......
+}
+```
+
+获取到所有的 `BeanFactoryPostProcessor`来对容器做一些额外的操作。BeanFactoryPostProcessor允许我们在容器实例化相应对象之前，对注册到容器的BeanDefinition所保存的信息做一些额外的操作。这里的getBeanFactoryPostProcessors()方法可以获取到3个Processor：
+
+```java
+ConfigurationWarningsApplicationContextInitializer$ConfigurationWarningsPostProcessor
+SharedMetadataReaderFactoryContextInitializer$CachingMetadataReaderFactoryPostProcessor
+ConfigFileApplicationListener$PropertySourceOrderingPostProcessor
+```
+
+
+
+不是有那么多BeanFactoryPostProcessor的实现类，为什么这儿只有这3个？因为在初始化流程获取到的各种ApplicationContextInitializer和ApplicationListener中，只有上文3个做了类似于如下操作：
+
+```java
+public void initialize(ConfigurableApplicationContext context) {
+    context.addBeanFactoryPostProcessor(new ConfigurationWarningsPostProcessor(getChecks()));
+}
+```
+
+然后你就可以进入到 `PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors()`方法了，这个方法除了会遍历上面的3个BeanFactoryPostProcessor处理外，还会获取类型为 `BeanDefinitionRegistryPostProcessor`的bean： `org.springframework.context.annotation.internalConfigurationAnnotationProcessor`，对应的Class为 `ConfigurationClassPostProcessor`。 `ConfigurationClassPostProcessor`用于解析处理各种注解，包括：@Configuration、@ComponentScan、@Import、@PropertySource、@ImportResource、@Bean。当处理 `@import`注解的时候，就会调用<自动配置>这一小节中的 `EnableAutoConfigurationImportSelector.selectImports()`来完成自动配置功能。其他的这里不再多讲，如果你有兴趣，可以查阅参考资料6。
+
+⑧、查找当前context中是否注册有CommandLineRunner和ApplicationRunner，如果有则遍历执行它们。
+
+⑨、执行所有SpringApplicationRunListener的finished()方法。
+
+这就是Spring Boot的整个启动流程，其核心就是在Spring容器初始化并启动的基础上加入各种扩展点，这些扩展点包括：ApplicationContextInitializer、ApplicationListener以及各种BeanFactoryPostProcessor等等。你对整个流程的细节不必太过关注，甚至没弄明白也没有关系，你只要理解这些扩展点是在何时如何工作的，能让它们为你所用即可。
+
+整个启动流程确实非常复杂，可以查询参考资料中的部分章节和内容，对照着源码，多看看，我想最终你都能弄清楚的。言而总之，Spring才是核心，理解清楚Spring容器的启动流程，那Spring Boot启动流程就不在话下了。
+
+## 参考资料
+
+1.[王福强 著；SpringBoot揭秘：快速构建微服务体系; 机械工业出版社, 2016](http://luecsc.blog.51cto.com/user_index.php?action=addblog&job=modify&tid=1964056)
+
+2.[王福强 著；Spring揭秘; 人民邮件出版社, 2009](http://union-click.jd.com/jdc?d=yzfgeF)
+
+3.[Craig Walls 著；丁雪丰 译；Spring Boot实战；中国工信出版集团 人民邮电出版社，2016](http://union-click.jd.com/jdc?d=AQ6oHO)
+
+4.[深入探讨 Java 类加载器](https://www.ibm.com/developerworks/cn/java/j-lo-classloader/)
+
+5.[spring boot实战：自动配置原理分析](http://blog.csdn.net/liaokailin/article/details/49559951)
+
+6.[spring boot实战：Spring boot Bean加载源码分析](http://blog.csdn.net/liaokailin/article/details/49107209)
 
