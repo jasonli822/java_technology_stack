@@ -109,3 +109,60 @@ StoreLoad Barriers 是一个“全能型”的屏障，它同时具有其他三�
 
 注意，两个操作之间具有happens-before关系，并不意味着前一个操作必须要在后一个操作之前执行！happens-before仅仅要求前一个操作(执行的结果)对后一个操作可见，且前一个操作按顺序排在第二个操作之前(the first is visible to and ordered before the second)。happens-before的定义很微妙，后文会具体说明happens-before为什么要这么定义。
 
+happens-before与JMM的关系如下图所示：
+
+![happens-before与JMM的关系图](https://github.com/jasonli822/java_technology_stack/blob/master/images/%E5%A4%9A%E7%BA%BF%E7%A8%8B/%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Java%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B/7.jpg)
+
+如上图所示，一个happens-before规则对应于一个或多个编译器和处理器重排序规则。对于java程序员来说，happens-before规则简单易懂，它避免java程序员为了理解JMM提供的内存可见性保证而去学习复杂的重排序规则以及这些规则的具体实现。
+
+### 重排序
+
+#### 数据依赖性
+
+如果两个操作访问同一个变量，且这两个操作中有一个为写操作，此时这两个操作之间就存在数据依赖性。数据依赖性分下列三种类型：
+
+| 名称   | 代码示例      | 说明                           |
+| ------ | ------------- | ------------------------------ |
+| 写后读 | a = 1; b = a; | 写一个变量之后，再读这个位置。 |
+| 写后写 | a = 1; a = 2; | 写一个变量后，再写这个变量。   |
+| 读后写 | a = b; b = 1; | 读一个变量后，再写这个变量。   |
+
+上面三种情况，只要重排序两个操作的执行顺序，程序的执行结果将会被改变。
+
+前面提到过，编译器和处理器可能会对操作做重排序。编译器和处理器在重排序时，会遵循数据依赖性，编译器和处理器不会改变存在数据依赖关系的两个操作顺序。
+
+注意，这里所说的数据依赖性仅针对单个处理器中执行指令序列和单个线程中执行的操作，不同的处理器之间和不同的线程之间的数据依赖性不被编译器和处理器考虑。
+
+#### as-if-serial语义
+
+as-if-serial语义的意思是指：不管怎么重排序(编译器和处理器为了提高并行度)，(单线程)程序的执行结果不能被改变。编译器，runtime和处理器都必须遵守as-if-else语义。
+
+为了遵守as-if-else语义，编译器和处理器不会对存在数据依赖关系的操作做重排序，因为这种重排序会改变执行结果。但是如果操作之间不存在数据依赖关系，这些操作就可能被编译器和处理器重排序。为了具体说明，请看下面计算圆面积的代码示例：
+
+double pi = 3.14;      // A
+
+double r = 1.0;        // B
+
+double area = pi * r  * r; // C
+
+上面三个操作的数据依赖关系如下图所示：
+
+![](https://github.com/jasonli822/java_technology_stack/blob/master/images/%E5%A4%9A%E7%BA%BF%E7%A8%8B/%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Java%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B/8.jpg)
+
+如上图所示，A和C之间存在数据依赖关系，同时B和C之间也存在数据依赖关系。因此在最终执行指令序列中，C不能被重排序到A和B的前面(C排到A和B的前面，程序的结果将会改变)。但A和B之间没有数据依赖关系，编译器和处理器可以重排序A和B之间的执行顺序。下图是该程序的两种执行顺序：
+
+![](https://github.com/jasonli822/java_technology_stack/blob/master/images/%E5%A4%9A%E7%BA%BF%E7%A8%8B/%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Java%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B/9.jpg)
+
+as-if-serial语义把单线程程序保护了起来，遵守as-if-serial语义的编译器，runtime和处理器共同为编写单线程程序的程序员创建了一个幻觉：单线程程序是按照程序的顺序来执行的。as-if-serial语义使单线程程序员无需担心重排序会干扰他们，也无需担心内存的可见性问题。
+
+#### 程序顺序规则
+
+根据happens-before的程序顺序规则，上面计算圆的面积的示例代码存在三个happens-before的关系：
+
+1. A happens-before B;
+2. B happens-before C;
+3. A happens-before ；
+
+这里的第3个happens-before关系，是根据happens-before的传递性推导出来的。
+
+这里A happens-before B,但实际执行时B却可以排在A之前执行(看上面的重排序后的执行顺序)
