@@ -85,3 +85,27 @@ JMM属于语言级的内存模型，它确保在不同的编译器和不同的�
 *注3：由于ARM处理器的内存模型与PowerPC处理器的内存模型非常类似，本文将忽略它。
 *注4：数据依赖性后文专门说明。
 
+为了保证内存可见性，java编译器在生成指令序列的适当位置会插入内存屏障指令来禁止特定类型的处理器重排序。JMM把内存屏障指令分为下列四类：
+
+| 屏障类型            | 指令示例                | 说明                                                         |
+| ------------------- | ----------------------- | ------------------------------------------------------------ |
+| LoadLoad Barriers   | Load1;LoadLoad;Load2    | 确保Load1数据的装载，之前于Load2及所有后续装载指令的装载。   |
+| StoreStore Barriers | Store1;LoadStore;Store2 | 确保Store1数据对其他处理器可见(刷新到内存)，之前于Store2及所有后续的存储指令的存储。 |
+| LoadStore Barriers  | Load1;LoadStore;Store2  | 确保Load1数据装载，之前于Store2及所有后续的存储指令刷新到内存。 |
+| StoreLoad Barriers  | Store1;StoreLoad;Load2  | 确保Store1数据对其他处理器变得可见(指刷新到内存)，之前于Load2及所有后续装载指令的装载。StoreLoad Barriers会使该屏障之前的所有内存访问指令(存储和装载指令)完成之后，才执行该屏障之后的内存访问指令。 |
+
+StoreLoad Barriers 是一个“全能型”的屏障，它同时具有其他三个屏障的效果。现代的多处理器大都支持该屏障(其他类型的屏障不一定被所有处理器支持)。执行该屏障开销会很昂贵，因为当前处理器通常要把写缓冲区中的数据全部刷新到内存中(buffer fully flush)。
+
+#### happens-before
+
+从JDK5开始，java使用新的JSR-133内存模型（本文除非特别说明，针对的都是JSR-133内存模型）。JSR-133模型使用happens-before的概念来阐述操作之间的内存可见性。在JMM中，如果一个操作执行的结果需要对另一个操作可见，那么这两个操作之间必须要存在happens-before关系。这里提到的两个操作既可以是在一个线程之内，也可以是在不同线程之间。
+
+与程序员密切相关的happens-before规则如下:
+
+* 程序顺序规则：一个线程中的每个操作，happens-before于该线程中的任意后续操作。
+* 监视器锁规则：对一个监视器的解锁，happens-before于随后对这个监视器的加锁。
+* volatile变量规则：对一个volatile域的写，happens-before于任意后续对这个volatile域的读。
+* 传递性：如果A happens-before B，且B happens-before C，那么A happens-before C。
+
+注意，两个操作之间具有happens-before关系，并不意味着前一个操作必须要在后一个操作之前执行！happens-before仅仅要求前一个操作(执行的结果)对后一个操作可见，且前一个操作按顺序排在第二个操作之前(the first is visible to and ordered before the second)。happens-before的定义很微妙，后文会具体说明happens-before为什么要这么定义。
+
